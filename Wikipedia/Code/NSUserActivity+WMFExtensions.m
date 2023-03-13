@@ -59,18 +59,42 @@ __attribute__((annotate("returns_localized_nsstring"))) static inline NSString *
     return activity;
 }
 
++ (nullable NSURLQueryItem *)queryItemWithName:(NSString *)name in:(NSArray<NSURLQueryItem *>*) items {
+    NSUInteger index = [items indexOfObjectPassingTest:^BOOL(NSURLQueryItem * _Nonnull item, NSUInteger idx, BOOL * _Nonnull stop) {
+        return [item.name isEqualToString:name];
+    }];
+    if (index == NSNotFound) {
+        return nil;
+    }
+    return [items objectAtIndex:index];
+}
+
 + (instancetype)wmf_placesActivityWithURL:(NSURL *)activityURL {
     NSURLComponents *components = [NSURLComponents componentsWithURL:activityURL resolvingAgainstBaseURL:NO];
-    NSURL *articleURL = nil;
-    for (NSURLQueryItem *item in components.queryItems) {
-        if ([item.name isEqualToString:@"WMFArticleURL"]) {
-            NSString *articleURLString = item.value;
-            articleURL = [NSURL URLWithString:articleURLString];
-            break;
-        }
-    }
     NSUserActivity *activity = [self wmf_pageActivityWithName:@"Places"];
-    activity.webpageURL = articleURL;
+    
+    NSURLQueryItem *articleURLItem = [self queryItemWithName:@"WMFArticleURL" in:components.queryItems];
+    if (articleURLItem != nil) {
+        NSString *articleURLString = articleURLItem.value;
+        activity.webpageURL = [NSURL URLWithString:articleURLString];
+    }
+    
+    NSURLQueryItem *latitudeItem = [self queryItemWithName:@"lat" in:components.queryItems];
+    NSURLQueryItem *longitudeItem = [self queryItemWithName:@"long" in:components.queryItems];
+    if (latitudeItem != nil && longitudeItem != nil) {
+        NSMutableDictionary *mutableUserInfo = activity.userInfo != nil ? [[NSMutableDictionary alloc] initWithDictionary:activity.userInfo] : [[NSMutableDictionary alloc] init];
+        
+        mutableUserInfo[@"placesLatitude"] = latitudeItem.value;
+        mutableUserInfo[@"placesLongitude"] = longitudeItem.value;
+        
+        NSURLQueryItem *titleItem = [self queryItemWithName:@"title" in:components.queryItems];
+        if (titleItem != nil) {
+            mutableUserInfo[@"placesTitle"] = titleItem.value;
+        }
+        
+        activity.userInfo = mutableUserInfo;
+    }
+    
     return activity;
 }
 
@@ -262,6 +286,21 @@ __attribute__((annotate("returns_localized_nsstring"))) static inline NSString *
     } else {
         return self.webpageURL;
     }
+}
+
+- (nullable NSString *)wmf_placesTitle {
+    return self.userInfo[@"placesTitle"];
+}
+
+- (nullable CLLocation *)wmf_placesLocation {
+    NSNumber *latitudeNumber = self.userInfo[@"placesLatitude"];
+    NSNumber *longitudeNumber = self.userInfo[@"placesLongitude"];
+    if (latitudeNumber != nil && longitudeNumber != nil) {
+        CLLocation *location = [[CLLocation alloc] initWithLatitude:latitudeNumber.doubleValue
+                                                          longitude:longitudeNumber.doubleValue];
+        return location;
+    }
+    return nil;
 }
 
 - (NSURL *)wmf_contentURL {
